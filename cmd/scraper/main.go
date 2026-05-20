@@ -66,16 +66,10 @@ func main() {
 func initPlaywright() error {
 	var err error
 
-	// 安装 Playwright driver（不下载浏览器，用系统 Chromium）
-	err = playwright.Install(&playwright.InstallOptions{
-		Browsers: []string{},
+	// 启动 Playwright（自动下载 driver，跳过浏览器下载）
+	pw, err = playwright.Run(&playwright.RunOptions{
+		SkipInstallBrowsers: true,
 	})
-	if err != nil {
-		log.Printf("安装 Playwright driver: %v", err)
-	}
-
-	// 启动 Playwright
-	pw, err = playwright.Run()
 	if err != nil {
 		return err
 	}

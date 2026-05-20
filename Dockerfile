@@ -10,9 +10,6 @@ RUN go mod download
 
 COPY . .
 
-# 预装 playwright driver（跳过浏览器，用系统 Chromium）
-RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install
-
 # 编译 server 和 scraper（CGO_ENABLED=1 因为 go-sqlite3 需要）
 RUN CGO_ENABLED=1 GOOS=linux go build -o price-monitor-server ./cmd/server
 RUN CGO_ENABLED=1 GOOS=linux go build -o price-monitor-scraper ./cmd/scraper
@@ -24,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     chromium \
+    chromium-shell \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CHROME_BIN=/usr/bin/chromium
@@ -34,7 +32,6 @@ WORKDIR /app
 
 COPY --from=builder /app/price-monitor-server .
 COPY --from=builder /app/price-monitor-scraper .
-COPY --from=builder /root/.cache/ms-playwright-go /root/.cache/ms-playwright-go
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
