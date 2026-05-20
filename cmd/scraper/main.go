@@ -84,6 +84,13 @@ func initPlaywright() error {
 	browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		ExecutablePath: playwright.String(chromeBin),
 		Headless:       playwright.Bool(true),
+		Args: []string{
+			"--no-sandbox",
+			"--disable-setuid-sandbox",
+			"--disable-dev-shm-usage",
+			"--disable-gpu",
+			"--single-process",
+		},
 	})
 	if err != nil {
 		return err
@@ -168,7 +175,10 @@ func scrapeJDPrice(url string) (PriceResult, error) {
 
 	log.Printf("访问京东商品: %s", url)
 
-	_, err = page.Goto(url)
+	_, err = page.Goto(url, page.GotoOptions{
+		Timeout:   playwright.Int(30000),
+		WaitUntil: playwright.String("domcontentloaded"),
+	})
 	if err != nil {
 		log.Printf("页面加载失败: %v", err)
 	}
@@ -235,7 +245,10 @@ func scrapeTaobaoPrice(url string) (PriceResult, error) {
 
 	log.Printf("访问淘宝商品: %s", url)
 
-	_, err = page.Goto(url)
+	_, err = page.Goto(url, page.GotoOptions{
+		Timeout:   playwright.Int(30000),
+		WaitUntil: playwright.String("domcontentloaded"),
+	})
 	if err != nil {
 		log.Printf("页面加载失败: %v", err)
 	}
@@ -291,7 +304,10 @@ func scrapeGenericPrice(url string) (PriceResult, error) {
 	}
 	defer page.Close()
 
-	_, err = page.Goto(url)
+	_, err = page.Goto(url, page.GotoOptions{
+		Timeout:   playwright.Int(30000),
+		WaitUntil: playwright.String("domcontentloaded"),
+	})
 	if err != nil {
 		return PriceResult{}, err
 	}
