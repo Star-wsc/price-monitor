@@ -35,6 +35,7 @@ WORKDIR /app
 
 COPY --from=builder /app/price-monitor-server .
 COPY --from=builder /app/price-monitor-scraper .
+COPY --from=builder /app/web ./web
 # 拷贝 playwright driver（不拷贝浏览器，用系统 Chromium）
 COPY --from=builder /root/.cache/ms-playwright-go /root/.cache/ms-playwright-go
 COPY start.sh /app/start.sh
