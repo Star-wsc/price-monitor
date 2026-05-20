@@ -5,6 +5,8 @@
 *.dylib
 price-monitor
 price-monitor-new
+price-monitor-server
+price-monitor-scraper
 build/
 
 # Database
