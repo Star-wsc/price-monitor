@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  price-monitor:
+    image: price-monitor:latest
+    container_name: price-monitor
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "38472:38472"   # server API
+      - "38473:38473"   # scraper API
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data      # 持久化数据库
+    restart: unless-stopped
+    networks:
+      - price-monitor-net
+
+networks:
+  price-monitor-net:
+    name: price-monitor-network
