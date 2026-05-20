@@ -175,9 +175,10 @@ func scrapeJDPrice(url string) (PriceResult, error) {
 
 	log.Printf("访问京东商品: %s", url)
 
-	_, err = page.Goto(url, page.GotoOptions{
-		Timeout:   playwright.Int(30000),
-		WaitUntil: playwright.String("domcontentloaded"),
+	waitState := playwright.WaitUntilState("domcontentloaded")
+	_, err = page.Goto(url, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(30000),
+		WaitUntil: &waitState,
 	})
 	if err != nil {
 		log.Printf("页面加载失败: %v", err)
@@ -245,9 +246,10 @@ func scrapeTaobaoPrice(url string) (PriceResult, error) {
 
 	log.Printf("访问淘宝商品: %s", url)
 
-	_, err = page.Goto(url, page.GotoOptions{
-		Timeout:   playwright.Int(30000),
-		WaitUntil: playwright.String("domcontentloaded"),
+	waitState := playwright.WaitUntilState("domcontentloaded")
+	_, err = page.Goto(url, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(30000),
+		WaitUntil: &waitState,
 	})
 	if err != nil {
 		log.Printf("页面加载失败: %v", err)
@@ -304,9 +306,10 @@ func scrapeGenericPrice(url string) (PriceResult, error) {
 	}
 	defer page.Close()
 
-	_, err = page.Goto(url, page.GotoOptions{
-		Timeout:   playwright.Int(30000),
-		WaitUntil: playwright.String("domcontentloaded"),
+	waitState := playwright.WaitUntilState("domcontentloaded")
+	_, err = page.Goto(url, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(30000),
+		WaitUntil: &waitState,
 	})
 	if err != nil {
 		return PriceResult{}, err
