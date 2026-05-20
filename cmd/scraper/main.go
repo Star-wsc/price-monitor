@@ -66,7 +66,15 @@ func main() {
 func initPlaywright() error {
 	var err error
 
-	// 跳过 playwright.Install()，使用系统 Chromium
+	// 安装 Playwright driver（不下载浏览器，用系统 Chromium）
+	err = playwright.Install(&playwright.InstallOptions{
+		Browsers: []string{},
+	})
+	if err != nil {
+		log.Printf("安装 Playwright driver: %v", err)
+	}
+
+	// 启动 Playwright
 	pw, err = playwright.Run()
 	if err != nil {
 		return err
@@ -78,7 +86,7 @@ func initPlaywright() error {
 		chromeBin = "/usr/bin/chromium"
 	}
 
-	// 启动系统 Chromium（不下载 playwright 自带浏览器）
+	// 使用系统 Chromium
 	browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		ExecutablePath: playwright.String(chromeBin),
 		Headless:       playwright.Bool(true),
