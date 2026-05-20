@@ -1,7 +1,7 @@
 # price-monitor Dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.22 AS builder
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -10,9 +10,9 @@ RUN go mod download
 
 COPY . .
 
-# 编译 server 和 scraper
-RUN CGO_ENABLED=0 GOOS=linux go build -o price-monitor-server ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux go build -o price-monitor-scraper ./cmd/scraper
+# 编译 server 和 scraper（CGO_ENABLED=1 因为 go-sqlite3 需要）
+RUN CGO_ENABLED=1 GOOS=linux go build -o price-monitor-server ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux go build -o price-monitor-scraper ./cmd/scraper
 
 # 最终镜像 - Debian slim（Chromium 更可靠）
 FROM debian:bookworm-slim
