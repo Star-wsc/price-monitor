@@ -66,25 +66,28 @@ func main() {
 func initPlaywright() error {
 	var err error
 
-	// 安装 Playwright 浏览器驱动
-	err = playwright.Install()
-	if err != nil {
-		log.Printf("安装 Playwright 失败: %v，尝试继续...", err)
-	}
-
-	// 运行 Playwright
+	// 跳过 playwright.Install()，使用系统 Chromium
 	pw, err = playwright.Run()
 	if err != nil {
 		return err
 	}
 
-	// 启动 Chromium 浏览器
-	browser, err = pw.Chromium.Launch()
+	// 获取系统 Chromium 路径
+	chromeBin := os.Getenv("CHROME_BIN")
+	if chromeBin == "" {
+		chromeBin = "/usr/bin/chromium"
+	}
+
+	// 启动系统 Chromium（不下载 playwright 自带浏览器）
+	browser, err = pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		ExecutablePath: playwright.String(chromeBin),
+		Headless:       playwright.Bool(true),
+	})
 	if err != nil {
 		return err
 	}
 
-	log.Println("Playwright 初始化成功")
+	log.Printf("Chromium 启动成功，路径: %s", chromeBin)
 	return nil
 }
 
