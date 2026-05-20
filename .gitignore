@@ -1,0 +1,27 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+price-monitor
+price-monitor-new
+build/
+
+# Database
+*.db
+data/*.db
+
+# Cookies
+cookies/*.json
+
+# Backup files
+*.bak
+*.backup
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
