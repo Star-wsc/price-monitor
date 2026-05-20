@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>价格监控</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-scanlines"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <div class="app-layout">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 12L12 2L22 12L12 22L2 12Z" stroke="#00f0ff" stroke-width="1.5"/>
+                        <path d="M7 12L12 7L17 12L12 17L7 12Z" fill="#00f0ff" opacity="0.3"/>
+                        <circle cx="12" cy="12" r="2" fill="#00f0ff"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-name">价格监控</span>
+                    <span class="brand-sub">SYSTEM v2.0</span>
+                </div>
+            </div>
+            <div class="topbar-center">
+                <div class="status-bar">
+                    <div class="status-dot"></div>
+                    <span id="lastUpdate">系统在线 --:--:--</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="time-display" id="timeDisplay">00:00:00</div>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <aside class="sidebar">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">监控概览</span>
+                        <div class="panel-line"></div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label">监控商品</div>
+                        <div class="stat-value" id="stat-total">0</div>
+                        <div class="stat-bar"><div class="stat-bar-fill" id="stat-bar-total" style="width:0%"></div></div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label">价格异常</div>
+                        <div class="stat-value danger" id="stat-alert">0</div>
+                        <div class="stat-bar"><div class="stat-bar-fill danger" id="stat-bar-alert" style="width:0%"></div></div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label">今日更新</div>
+                        <div class="stat-value success" id="stat-today">0</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label">距目标总额</div>
+                        <div class="stat-value info" id="stat-savings">¥0</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">数据筛选</span>
+                        <div class="panel-line"></div>
+                    </div>
+                    <div class="filter-list">
+                        <label class="filter-item">
+                            <input type="checkbox" value="jd" checked>
+                            <span class="filter-check"></span>
+                            <span class="filter-name">JD 京东</span>
+                        </label>
+                        <label class="filter-item">
+                            <input type="checkbox" value="taobao" checked>
+                            <span class="filter-check"></span>
+                            <span class="filter-name">TB 淘宝</span>
+                        </label>
+                        <label class="filter-item">
+                            <input type="checkbox" value="tmall" checked>
+                            <span class="filter-check"></span>
+                            <span class="filter-name">TM 天猫</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="sidebar-actions">
+                    <button class="btn-tech btn-add" id="addBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        添加商品
+                    </button>
+                    <button class="btn-tech btn-scan" id="refreshAll">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        全部扫描
+                    </button>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <div class="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" placeholder="搜索商品...">
+                </div>
+
+                <div class="product-grid" id="productGrid">
+                    <div class="empty-terminal">
+                        <div class="empty-line">[ 系统 ] 监控队列为空</div>
+                        <div class="empty-line">[ 提示 ] 点击添加商品开始监控</div>
+                        <div class="empty-cursor">_</div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="addModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </div>
+                    添加商品
+                </div>
+                <button class="modal-close" id="closeAddModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label"><span class="label-prefix">01</span> 商品链接</label>
+                    <input type="text" id="productUrl" placeholder="https://item.jd.com/100009077449.html">
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><span class="label-prefix">02</span> 目标价格 <span class="label-opt">(选填)</span></label>
+                    <input type="number" id="targetPrice" placeholder="3499">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" id="cancelAdd">取消</button>
+                <button class="btn-neon" id="confirmAdd">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="historyModal">
+        <div class="modal-box modal-wide">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    价格历史
+                </div>
+                <button class="modal-close" id="closeHistory">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="history-kpis" id="historyKpis"></div>
+                <div id="historyChart" style="width:100%;height:240px"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer"></div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

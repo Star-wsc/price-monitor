@@ -1,0 +1,384 @@
+const API_BASE = '/api';
+let allProducts = [];
+let historyChart = null;
+let draggedId = null;
+
+function startClock() {
+    function tick() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2,'0');
+        const m = String(now.getMinutes()).padStart(2,'0');
+        const s = String(now.getSeconds()).padStart(2,'0');
+        const el = document.getElementById('timeDisplay');
+        if (el) el.textContent = h+':'+m+':'+s;
+    }
+    tick();
+    setInterval(tick, 1000);
+}
+
+function showToast(msg, type) {
+    if (!type) type = 'info';
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = 'toast toast-' + type;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(function() { t.remove(); }, 3500);
+}
+
+function loadOrder() {
+    try {
+        var saved = JSON.parse(localStorage.getItem('productOrder') || '[]');
+        if (saved.length > 0 && allProducts.length > 0) {
+            var map = {};
+            allProducts.forEach(function(p) { map[p.id] = p; });
+            allProducts = saved.map(function(id) { return map[id]; }).filter(Boolean);
+        }
+    } catch(e) {}
+}
+
+function saveOrder() {
+    localStorage.setItem('productOrder', JSON.stringify(allProducts.map(function(p) { return p.id; })));
+}
+
+async function loadProducts() {
+    const grid = document.getElementById('productGrid');
+    grid.innerHTML = '<p class="loading">[ 加载中... ]</p>';
+    try {
+        const res = await fetch(API_BASE + '/products');
+        const json = await res.json();
+        if (json.code !== 0) { showToast(json.msg, 'error'); return; }
+        allProducts = json.data || [];
+        loadOrder();
+        updateStats();
+        renderProducts();
+        const now = new Date();
+        const ts = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+        const el = document.getElementById('lastUpdate');
+        if (el) el.textContent = '系统在线 ' + ts;
+    } catch (e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+function updateStats() {
+    const total = allProducts.length;
+    const alert = allProducts.filter(function(p) { return p.target_price > 0 && p.current_price <= p.target_price; }).length;
+    const today = new Date().toDateString();
+    const updated = allProducts.filter(function(p) { return p.last_check && new Date(p.last_check).toDateString() === today; }).length;
+    var savings = 0;
+    allProducts.forEach(function(p) { if (p.target_price > 0) savings += Math.max(0, p.current_price - p.target_price); });
+
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-alert').textContent = alert;
+    document.getElementById('stat-today').textContent = updated;
+    document.getElementById('stat-savings').textContent = savings > 0 ? '¥' + savings.toFixed(0) : '¥0';
+
+    var maxVal = Math.max(total, 1);
+    var barTotal = document.getElementById('stat-bar-total');
+    var barAlert = document.getElementById('stat-bar-alert');
+    if (barTotal) barTotal.style.width = (total / maxVal * 100) + '%';
+    if (barAlert) barAlert.style.width = (alert / maxVal * 100) + '%';
+}
+
+function renderProducts() {
+    const grid = document.getElementById('productGrid');
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const checked = Array.from(document.querySelectorAll('.filter-item input:checked')).map(function(c) { return c.value; });
+
+    const filtered = allProducts.filter(function(p) {
+        return p.name.toLowerCase().includes(search) && checked.includes(p.source);
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = allProducts.length === 0
+            ? '<div class="empty-terminal">' +
+                '<div class="empty-line">[ 系统 ] 监控队列为空</div>' +
+                '<div class="empty-line">[ 提示 ] 点击添加商品开始监控</div>' +
+                '<div class="empty-cursor">_</div>' +
+              '</div>'
+            : '<div class="empty-terminal">' +
+                '<div class="empty-line">[ 筛选 ] 无匹配结果</div>' +
+                '<div class="empty-line">[ 建议 ] 调整搜索条件或筛选器</div>' +
+                '<div class="empty-cursor">_</div>' +
+              '</div>';
+        return;
+    }
+
+    grid.innerHTML = filtered.map(function(p) { return renderCard(p); }).join('');
+    bindCards();
+}
+
+function renderCard(p) {
+    const isReached = p.target_price > 0 && p.current_price <= p.target_price;
+    const sourceLabel = {jd:'JD', taobao:'TB', tmall:'TM', generic:'GEN'}[p.source] || p.source;
+    const diff = p.target_price > 0 ? (p.current_price - p.target_price).toFixed(2) : null;
+    const lastCheck = p.last_check ? new Date(p.last_check).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '从未';
+    const imgUrl = p.image_url || '/static/img/placeholder.png';
+    const cardId = String(p.id).padStart(4,'0');
+    const priceVal = p.current_price.toFixed(2);
+    const targetVal = p.target_price > 0 ? '¥' + p.target_price : '--';
+    const isReachedCls = isReached ? 'reached' : 'target';
+    const alertBadge = isReached ? '<span class="card-badge badge-alert">目标已达成</span>' : '';
+    const diffBadge = diff > 0 ? '<span class="card-badge badge-info">差价: ¥' + diff + '</span>' : '';
+    const reachedCls = isReached ? 'reached' : 'target';
+
+    return `<div class="product-card" data-id="${p.id}" data-source="${p.source}">
+        <div class="card-header">
+            <span class="card-id">#${cardId}</span>
+            <span class="card-source-tag ${p.source}">${sourceLabel}</span>
+        </div>
+        <div class="card-main">
+            <div class="card-img-wrap">
+                <a href="${p.url}" target="_blank" rel="noopener" class="card-img-link" onclick="event.stopPropagation()">
+                    <img src="${imgUrl}" class="card-img" onerror="this.src='/static/img/placeholder.png'; this.style.padding='10px'">
+                </a>
+            </div>
+            <div class="card-info">
+                <a href="${p.url}" target="_blank" rel="noopener" class="card-name-link">${p.name}</a>
+                <div class="card-data-grid">
+                    <div class="card-data-item">
+                        <div class="card-data-label">现价</div>
+                        <div class="card-data-value price">¥${priceVal}</div>
+                    </div>
+                    <div class="card-data-item">
+                        <div class="card-data-label">目标</div>
+                        <div class="card-data-value ${isReachedCls}">${targetVal}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-status-row">
+            ${alertBadge}
+            ${diffBadge}
+        </div>
+        <div class="card-footer">
+            <span class="card-last-scan">扫描: ${lastCheck}</span>
+            <div class="card-actions">
+                <button class="btn btn-scan-card" data-id="${p.id}">扫描</button>
+                <button class="btn btn-history-card" data-id="${p.id}">历史</button>
+                <button class="btn btn-delete-card" data-id="${p.id}">删除</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function bindCards() {
+    document.querySelectorAll('.btn-scan-card').forEach(function(b) {
+        b.addEventListener('click', function() { refreshProduct(b.dataset.id); });
+    });
+    document.querySelectorAll('.btn-history-card').forEach(function(b) {
+        b.addEventListener('click', function() { showHistory(b.dataset.id); });
+    });
+    document.querySelectorAll('.btn-delete-card').forEach(function(b) {
+        b.addEventListener('click', function() { deleteProduct(b.dataset.id); });
+    });
+    // drag
+    document.querySelectorAll('.product-card').forEach(function(card) {
+        card.addEventListener('dragstart', onDragStart);
+        card.addEventListener('dragover', onDragOver);
+        card.addEventListener('dragleave', onDragLeave);
+        card.addEventListener('drop', onDrop);
+        card.addEventListener('dragend', onDragEnd);
+    });
+}
+
+function onDragStart(e) {
+    draggedId = e.currentTarget.dataset.id;
+    e.currentTarget.style.opacity = '0.4';
+    e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const card = e.currentTarget;
+    if (card.dataset.id !== draggedId) {
+        card.style.borderColor = 'var(--cyan)';
+        card.style.boxShadow = '0 0 20px rgba(0,240,255,0.2)';
+    }
+}
+function onDragLeave(e) {
+    e.currentTarget.style.borderColor = '';
+    e.currentTarget.style.boxShadow = '';
+}
+function onDrop(e) {
+    e.preventDefault();
+    const targetId = e.currentTarget.dataset.id;
+    if (targetId === draggedId) return;
+    const fromIdx = allProducts.findIndex(function(p) { return String(p.id) === draggedId; });
+    const toIdx = allProducts.findIndex(function(p) { return String(p.id) === targetId; });
+    if (fromIdx === -1 || toIdx === -1) return;
+    const moved = allProducts.splice(fromIdx, 1)[0];
+    allProducts.splice(toIdx, 0, moved);
+    saveOrder();
+    renderProducts();
+}
+function onDragEnd(e) {
+    e.currentTarget.style.opacity = '';
+    document.querySelectorAll('.product-card').forEach(function(c) {
+        c.style.borderColor = '';
+        c.style.boxShadow = '';
+    });
+}
+
+async function addProduct() {
+    const url = document.getElementById('productUrl').value.trim();
+    const targetPrice = document.getElementById('targetPrice').value.trim();
+    if (!url) { showToast('请输入商品链接', 'error'); return; }
+    const btn = document.getElementById('confirmAdd');
+    btn.disabled = true;
+    btn.textContent = '扫描中...';
+    try {
+        const fd = new FormData();
+        fd.append('url', url);
+        if (targetPrice) fd.append('target_price', targetPrice);
+        const res = await fetch(API_BASE + '/products', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (json.code === 0) {
+            closeAddModal();
+            document.getElementById('productUrl').value = '';
+            document.getElementById('targetPrice').value = '';
+            showToast('商品已添加', 'success');
+            loadProducts();
+        } else { showToast(json.msg, 'error'); }
+    } catch (e) { showToast('错误: ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '确认'; }
+}
+
+async function deleteProduct(id) {
+    if (!confirm('[ 确认 ] 删除商品 #' + id + '？')) return;
+    try {
+        const res = await fetch(API_BASE + '/products/' + id, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.code === 0) { showToast('已删除', 'success'); loadProducts(); }
+        else { showToast(json.msg, 'error'); }
+    } catch (e) { showToast('错误: ' + e.message, 'error'); }
+}
+
+async function refreshProduct(id) {
+    const btn = document.querySelector('.btn-scan-card[data-id="' + id + '"]');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    try {
+        const res = await fetch(API_BASE + '/products/' + id + '/refresh', { method: 'POST' });
+        const json = await res.json();
+        if (json.code === 0) {
+            showToast('扫描成功: ¥' + json.data.current_price.toFixed(2), 'success');
+            loadProducts();
+        } else { showToast(json.msg, 'error'); }
+    } catch (e) { showToast('错误: ' + e.message, 'error'); }
+    if (btn) { btn.disabled = false; btn.textContent = '扫描'; }
+}
+
+async function refreshAll() {
+    const btn = document.getElementById('refreshAll');
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> 扫描中...';
+    try {
+        const res = await fetch(API_BASE + '/products');
+        const json = await res.json();
+        var ok = 0, fail = 0;
+        for (var i = 0; i < (json.data || []).length; i++) {
+            var p = json.data[i];
+            var r = await fetch(API_BASE + '/products/' + p.id + '/refresh', { method: 'POST' });
+            var j = await r.json();
+            if (j.code === 0) ok++; else fail++;
+        }
+        showToast('扫描完成: ' + ok + ' 成功 ' + fail + ' 失败', ok > 0 ? 'success' : 'error');
+        loadProducts();
+    } catch (e) { showToast('错误: ' + e.message, 'error'); }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> 全部扫描';
+}
+
+async function showHistory(id) {
+    const modal = document.getElementById('historyModal');
+    modal.classList.add('show');
+    try {
+        const res = await fetch(API_BASE + '/products/' + id + '/history?days=30');
+        const json = await res.json();
+        if (json.code !== 0) { showToast(json.msg, 'error'); return; }
+        const history = json.data || [];
+        document.getElementById('historyKpis').innerHTML = '';
+
+        if (history.length === 0) {
+            document.getElementById('historyKpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px">[ 暂无数据 ]</div>';
+            document.getElementById('historyChart').innerHTML = '';
+            return;
+        }
+
+        const prices = history.map(function(h) { return h.price; });
+        const min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
+        const avg = (prices.reduce(function(a,b) { return a+b; }, 0) / prices.length).toFixed(2);
+        const latest = prices[prices.length - 1];
+
+        document.getElementById('historyKpis').innerHTML =
+            '<div class="hkpi"><div class="hkpi-val" style="color:var(--green)">¥' + min.toFixed(2) + '</div><div class="hkpi-label">最低</div></div>' +
+            '<div class="hkpi"><div class="hkpi-val" style="color:var(--pink)">¥' + max.toFixed(2) + '</div><div class="hkpi-label">最高</div></div>' +
+            '<div class="hkpi"><div class="hkpi-val">¥' + avg + '</div><div class="hkpi-label">均价</div></div>' +
+            '<div class="hkpi"><div class="hkpi-val" style="color:var(--cyan)">¥' + latest.toFixed(2) + '</div><div class="hkpi-label">当前</div></div>';
+
+        if (!historyChart) historyChart = echarts.init(document.getElementById('historyChart'));
+        const dates = history.map(function(h) { return new Date(h.checked_at).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit'}); });
+        const priceData = history.map(function(h) { return { value: h.price, ts: h.checked_at }; });
+
+        historyChart.setOption({
+            backgroundColor: 'transparent',
+            grid: { left: 55, right: 15, top: 10, bottom: 30 },
+            tooltip: {
+                trigger: 'axis',
+                formatter: function(params) {
+                    var d = new Date(priceData[params[0].dataIndex].ts).toLocaleString('zh-CN');
+                    return '<div style="font-size:11px;color:#5a6a8a">' + d + '</div><b style="font-size:14px;color:#ff2d78">¥' + params[0].value + '</b>';
+                }
+            },
+            xAxis: {
+                type: 'category', data: dates,
+                axisLabel: { fontSize: 9, color: '#5a6a8a', rotate: 30 },
+                axisLine: { lineStyle: { color: '#1a2744' } },
+                axisTick: { show: false },
+                splitLine: { show: false }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { formatter: '¥{value}', fontSize: 10, color: '#5a6a8a' },
+                splitLine: { lineStyle: { color: '#1a2744', type: 'dashed' } },
+                axisLine: { show: false },
+                axisTick: { show: false }
+            },
+            series: [{
+                type: 'line', data: prices,
+                smooth: 0.3,
+                symbol: 'circle', symbolSize: 4,
+                lineStyle: { color: '#00f0ff', width: 2, shadowColor: 'rgba(0,240,255,0.5)', shadowBlur: 8 },
+                itemStyle: { color: '#00f0ff', borderWidth: 2, borderColor: '#050810' },
+                areaStyle: {
+                    color: {
+                        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                        colorStops: [
+                            { offset: 0, color: 'rgba(0,240,255,0.2)' },
+                            { offset: 1, color: 'rgba(0,240,255,0)' }
+                        ]
+                    }
+                }
+            }]
+        });
+        window.addEventListener('resize', function() { if (historyChart) historyChart.resize(); });
+    } catch (e) { showToast('错误: ' + e.message, 'error'); }
+}
+
+function openAddModal() { document.getElementById('addModal').classList.add('show'); document.getElementById('productUrl').focus(); }
+function closeAddModal() { document.getElementById('addModal').classList.remove('show'); }
+function closeHistoryModal() { document.getElementById('historyModal').classList.remove('show'); }
+
+document.getElementById('addBtn').addEventListener('click', openAddModal);
+document.getElementById('confirmAdd').addEventListener('click', addProduct);
+document.getElementById('cancelAdd').addEventListener('click', closeAddModal);
+document.getElementById('closeAddModal').addEventListener('click', closeAddModal);
+document.getElementById('closeHistory').addEventListener('click', closeHistoryModal);
+document.getElementById('refreshAll').addEventListener('click', refreshAll);
+document.getElementById('searchInput').addEventListener('input', renderProducts);
+document.querySelectorAll('.filter-item input').forEach(function(c) { c.addEventListener('change', renderProducts); });
+document.getElementById('addModal').addEventListener('click', function(e) { if (e.target.id === 'addModal') closeAddModal(); });
+document.getElementById('historyModal').addEventListener('click', function(e) { if (e.target.id === 'historyModal') closeHistoryModal(); });
+document.getElementById('productUrl').addEventListener('keydown', function(e) { if (e.key === 'Enter') addProduct(); });
+
+startClock();
+loadProducts();
