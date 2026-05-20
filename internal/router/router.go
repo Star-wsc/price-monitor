@@ -1,6 +1,8 @@
 package router
 
 import (
+	"os"
+
 	"github.com/gin-gonic/gin"
 
 	"price-monitor/internal/handler"
@@ -33,9 +35,15 @@ func Setup() *gin.Engine {
 	}
 
 	// 前端页面
-	r.Static("/static", "./web/static")
+	// 获取可执行文件所在目录，用于静态文件路径
+	execPath := os.Getenv("EXEC_PATH")
+	if execPath == "" {
+		execPath = "/app"
+	}
+
+	r.Static("/static", execPath+"/web/static")
 	r.GET("/", func(c *gin.Context) {
-		c.File("./web/index.html")
+		c.File(execPath + "/web/index.html")
 	})
 
 	return r
