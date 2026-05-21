@@ -187,38 +187,104 @@ func scrapeJDPrice(url string) (PriceResult, error) {
 	// 等待页面加载
 	page.WaitForTimeout(3000)
 
-	// 提取价格 - 尝试多个选择器
-	priceStr := ""
-	selectors := []string{".price J-price", "[class*='price']", "#price", ".p-price"}
-	for _, sel := range selectors {
-		price, err := page.Locator(sel).First().TextContent()
-		if err == nil && price != "" {
-			priceStr = price
-			break
-		}
-	}
+	// 用 JavaScript 从京东数据层提取价格
+	jsResult, err := page.Evaluate(`() => {
+		try {
+			// 尝试从 __INITIAL_STATE__ 获取
+			if (window.__INITIAL_STATE__) {
+				var state = window.__INITIAL_STATE__;
+				if (state.product && state.product.currentPrice) {
+					return { price: state.product.currentPrice, name: state.product.name };
+				}
+			}
+			// 尝试从 JD 页面配置获取
+			if (window.pageConfig && window.pageConfig.productInfo) {
+				return { price: window.pageConfig.productInfo.jdPrice, name: window.pageConfig.productInfo.name };
+			}
+			// 尝试从 smartPrice 获取
+			var priceEl = document.querySelector('.p-price .price');
+			if (priceEl) {
+				var priceText = priceEl.textContent.trim();
+				// 提取价格数字
+				var match = priceText.match(/\\d+\\.?\\d*/);
+				if (match) {
+					var nameEl = document.querySelector('.sku-name') || document.querySelector('h1') || document.querySelector('title');
+					var nameText = nameEl ? nameEl.textContent.trim().replace(/\\s+/g, '') : '';
+					var imgEl = document.querySelector('#spec-img') || document.querySelector('.main-img') || document.querySelector('[class*=\"spec-img\"] img');
+					var imgSrc = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : '';
+					return { price: match[0], name: nameText, img: imgSrc };
+				}
+			}
+		} catch(e) {}
+		return null;
+	}`)
 
-	// 提取商品名称
+	// 从 JS 评估结果中提取价格、名称、图片
+	finalPrice := 0.0
 	productName := ""
-	nameSelectors := []string{".sku-name", "[class*='name']", "title"}
-	for _, sel := range nameSelectors {
-		name, err := page.Locator(sel).First().TextContent()
-		if err == nil && name != "" {
-			productName = name
-			break
+	imgURL := ""
+
+	if jsResult != nil {
+		if m, ok := jsResult.(map[string]interface{}); ok {
+			if priceVal, ok := m["price"].(string); ok && priceVal != "" {
+				finalPrice = parsePrice(priceVal)
+				log.Printf("JS 提取价格: %s -> %.2f", priceVal, finalPrice)
+			}
+			if nameVal, ok := m["name"].(string); ok {
+				productName = nameVal
+			}
+			if imgVal, ok := m["img"].(string); ok {
+				imgURL = imgVal
+			}
 		}
 	}
 
-	// 提取图片
-	imgURL := ""
-	img, err := page.Locator("#spec-img").GetAttribute("src")
-	if err == nil {
-		imgURL = img
+	// 备用方案：从页面元素提取
+	if finalPrice == 0 {
+		priceSelectors := []string{
+			".p-price .price",
+			".p-price",
+			"#price .price",
+			"[class*='price']",
+			"#price",
+		}
+		for _, sel := range priceSelectors {
+			price, err := page.Locator(sel).First().TextContent()
+			if err == nil && price != "" {
+				cleaned := strings.ReplaceAll(price, " ", "")
+				cleaned = strings.ReplaceAll(cleaned, "\n", "")
+				finalPrice = parsePrice(cleaned)
+				if finalPrice > 0 {
+					log.Printf("备用选择器 %s 提取到价格: %s -> %.2f", sel, cleaned, finalPrice)
+					break
+				}
+			}
+		}
 	}
 
-	finalPrice := parsePrice(priceStr)
+	// 提取商品图片（备用）
+	if imgURL == "" {
+		img, err := page.Locator("#spec-img").GetAttribute("src")
+		if err == nil && img != "" {
+			imgURL = img
+		}
+	}
 
-	log.Printf("商品: %s, 价格: %s", productName, priceStr)
+	// 提取商品名称（备用）
+	if productName == "" {
+		nameSelectors := []string{".sku-name", "h1", "[class*='title']", "title"}
+		for _, sel := range nameSelectors {
+			name, err := page.Locator(sel).First().TextContent()
+			if err == nil && name != "" {
+				productName = strings.TrimSpace(name)
+				if len(productName) > 0 {
+					break
+				}
+			}
+		}
+	}
+
+	log.Printf("京东商品: %s, 价格: %.2f, 图片: %s", productName, finalPrice, imgURL)
 
 	return PriceResult{
 		Success:       true,
